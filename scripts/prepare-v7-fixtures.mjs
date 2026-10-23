@@ -12,7 +12,7 @@ import { join } from 'node:path'
 const root = process.argv[2]
 const names = ['basic', 'sorting', 'filtering', 'pagination', 'pagination-controlled', 'row-selection',
   'row-selection-and-pagination', 'expanding', 'footers', 'column-hiding', 'editable-data', 'sub-components',
-  'kitchen-sink']
+  'kitchen-sink', 'column-ordering']
 for (const name of names) {
   let src = readFileSync(join(root, 'examples', name, 'src', 'App.js'), 'utf8')
   src = src.replace("import styled from 'styled-components'\n", '')

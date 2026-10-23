@@ -1,0 +1,1 @@
+info 67: v7 `state` is now the v9 table.state (sorting, columnFilters, pagination, rowSelection, ... instead of sortBy, filters, pageIndex, selectedRowIds)

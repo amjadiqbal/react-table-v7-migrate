@@ -7,7 +7,7 @@
 import 'regenerator-runtime/runtime'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { createElement, type ComponentType } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(cleanup)
 
@@ -81,6 +81,22 @@ const selectNth = (n: number, value: string): Step => ({
 })
 const clickSpan = (label: string, index = 0): Step => click(`click span ${label} #${index}`, (r) => [...r.querySelectorAll('span')].filter((s) => text(s) === label)[index])
 
+/** Run a step with Math.random seeded the same way on both sides (the example shuffles columns). */
+function seeded(step: Step, seed: number): Step {
+  return {
+    label: `${step.label} (seed ${seed})`,
+    run: async (root) => {
+      let a = seed
+      const spy = vi.spyOn(Math, 'random').mockImplementation(() => ((a = (a * 16807) % 2147483647) / 2147483647))
+      try {
+        await step.run(root)
+      } finally {
+        spy.mockRestore()
+      }
+    },
+  }
+}
+
 const SCRIPTS: Record<string, Step[] | Script> = {
   basic: [],
   sorting: {
@@ -135,6 +151,11 @@ const SCRIPTS: Record<string, Step[] | Script> = {
     clickButton('<'),
   ],
   'sub-components': [clickSpan('👉', 0), clickSpan('👉', 2)],
+  'column-ordering': {
+    // the example dumps the whole state (v7 columnOrder + hiddenColumns, v9 columnOrder + columnVisibility)
+    ignorePre: 'whole-state dump',
+    steps: [seeded(clickButton('Randomize Columns'), 1), seeded(clickButton('Randomize Columns'), 2)],
+  },
 }
 
 const examples = import.meta.glob('./fixtures/v7-examples/*/{input,output}.jsx')
