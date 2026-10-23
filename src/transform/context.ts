@@ -46,6 +46,8 @@ export class Ctx {
   userSortTypes = new Set<string>()
   commented = new WeakSet<Node>()
   source = ''
+  /** TS: `hooks.visibleColumns` functions to type as ColumnDef<features, any>[] at the end. */
+  columnArrayFns: Node[] = []
 
   constructor(public readonly ts: boolean) {}
 

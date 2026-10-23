@@ -81,7 +81,26 @@ const exprPlugins = (): ParserPlugin[] => (tsMode ? ['jsx', 'typescript'] : ['js
  */
 export function expr(code: string, subs: Record<string, Node> = {}): Node {
   const node = clean(parseExpression(code.replace(/\$([A-Za-z0-9_]+)/g, '__SUB_$1__'), { plugins: exprPlugins() }))
+  if (tsMode) annotateParams(node)
   return substitute(node, subs)
+}
+
+/**
+ * In TypeScript files, generated arrow functions that are not call arguments (where TypeScript
+ * infers parameter types) get `any` parameters so `noImplicitAny` code still compiles.
+ */
+function annotateParams(root: Node) {
+  walk(root, (p) => {
+    const n = p.node
+    if (n.type !== 'ArrowFunctionExpression') return
+    if (isCall(p.parent) && p.key !== 'callee') return
+    for (const param of n.params) {
+      if (param.type === 'Identifier' && !param.typeAnnotation && !/^__SUB_/.test(param.name)) {
+        param.typeAnnotation = b.tsTypeAnnotation(b.tsAnyKeyword())
+        param.optional = true
+      }
+    }
+  })
 }
 
 export function stmts(code: string, subs: Record<string, Node> = {}): Node[] {

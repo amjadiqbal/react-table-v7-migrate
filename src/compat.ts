@@ -85,9 +85,13 @@ export const sortFn_v7Number: SortFn = (rowA, rowB, columnId) => {
  * v7's `useAsyncDebounce`: returns a debounced function whose calls resolve with the result of the
  * last call once `wait` ms have passed without another call.
  */
-export function useAsyncDebounce<Args extends unknown[], R>(fn: (...args: Args) => R | Promise<R>, wait = 0) {
+export function useAsyncDebounce<F extends (...args: any[]) => any>(
+  fn: F,
+  wait = 0,
+): (...args: Parameters<F>) => Promise<Awaited<ReturnType<F>>> {
+  type R = Awaited<ReturnType<F>>
   const state = useRef<{
-    fn?: (...args: Args) => R | Promise<R>
+    fn?: F
     timeout?: ReturnType<typeof setTimeout>
     promise?: Promise<R>
     resolve?: (value: R) => void
@@ -96,7 +100,7 @@ export function useAsyncDebounce<Args extends unknown[], R>(fn: (...args: Args) 
   state.current.fn = fn
 
   return useCallback(
-    (...args: Args): Promise<R> => {
+    (...args: Parameters<F>): Promise<R> => {
       const s = state.current
       if (!s.promise) {
         s.promise = new Promise<R>((resolve, reject) => {

@@ -53,11 +53,19 @@ export interface TransformResult {
   features: string[]
   /** Number of useTable calls migrated. */
   tables: number
+  /** The module-level `features` variable this file declares, if exactly one. */
+  featuresVar: string | null
+  /** True when the file uses v7 types but has no table of its own (types fall back to `any` features). */
+  wantsFeaturesType: boolean
 }
 
 export interface TransformOptions {
   /** Used to pick the parser (ts/tsx/js/jsx). Defaults to `file.tsx`. */
   filename?: string
+  /** Export the generated module-level `features` (another file types its columns with it). */
+  exportFeatures?: boolean
+  /** Type this file's v9 types with another module's features: `import type { name } from from`. */
+  featuresImport?: { from: string; name: string }
 }
 
 const COMPAT = '@amjadiqbal/react-table-v7-migrate/compat'
@@ -106,17 +114,17 @@ export function transformSource(source: string, options: TransformOptions = {}):
   const program = ast.program
   const ctx = new Ctx(ts)
   ctx.source = source
-  const unchanged = (): TransformResult => ({ code: source, changed: false, notes: ctx.notes, features: [], tables: 0 })
+  const unchanged = (): TransformResult => ({ code: source, changed: false, notes: ctx.notes, features: [], tables: 0, featuresVar: null, wantsFeaturesType: false })
 
+  let augments = false
+  walk(program, (p) => {
+    if (p.node.type === 'TSModuleDeclaration' && p.node.id?.value === 'react-table') {
+      augments = true
+      ctx.note('todo', "this file augments react-table's types (`declare module 'react-table'`); delete it once the app is on v9 (v9 types come from the features you register)", p.node)
+    }
+  }, { types: true })
   const rtImports = program.body.filter((s: Node) => s.type === 'ImportDeclaration' && s.source.value === 'react-table')
-  if (!rtImports.length) {
-    walk(program, (p) => {
-      if (p.node.type === 'TSModuleDeclaration' && p.node.id?.value === 'react-table') {
-        ctx.note('todo', "this file augments react-table's types (`declare module 'react-table'`); delete it once the app is on v9", p.node)
-      }
-    }, { types: true })
-    return unchanged()
-  }
+  if (!rtImports.length || augments) return unchanged()
 
   // local name → imported name
   const imported = new Map<string, string>()
@@ -195,14 +203,27 @@ export function transformSource(source: string, options: TransformOptions = {}):
   }
 
   // ---- 5. features and imports -----------------------------------------------------------------
-  buildFeatures(tables, ctx, program, fresh)
-  fixImports(program, rtImports, imported, typeOnly, ctx, ts)
+  const featuresVar = buildFeatures(tables, ctx, program, fresh)
+  if (featuresVar && options.exportFeatures) {
+    const decl = program.body.find((st: Node) => st.type === 'VariableDeclaration' && st.declarations[0]?.id.name === featuresVar)
+    if (decl) program.body.splice(program.body.indexOf(decl), 1, b.exportNamedDeclaration(decl, []))
+  }
+  let F = featuresVar ? `typeof ${featuresVar}` : 'any'
+  if (!featuresVar && options.featuresImport && ts) {
+    const local = names.has(options.featuresImport.name) ? fresh(`${options.featuresImport.name}Type`) : options.featuresImport.name
+    const spec: Node = b.importSpecifier(b.identifier(options.featuresImport.name), b.identifier(local))
+    const decl: Node = b.importDeclaration([spec], b.stringLiteral(options.featuresImport.from))
+    decl.importKind = 'type'
+    program.body.splice(program.body.indexOf(rtImports[0]) + 1, 0, decl)
+    F = `typeof ${local}`
+  }
+  const typedWithAny = fixImports(program, rtImports, imported, typeOnly, ctx, ts, F, names)
 
   const code = printFile(ast)
   const features = new Set<string>()
   for (const t of tables) for (const n of [...t.needs, ...ctx.shared]) if (n.kind === 'feature') features.add(n.name)
   ctx.notes.sort((a, b2) => a.line - b2.line)
-  return { code, changed: code !== source, notes: ctx.notes, features: [...features], tables: tables.length }
+  return { code, changed: code !== source, notes: ctx.notes, features: [...features], tables: tables.length, featuresVar, wantsFeaturesType: typedWithAny && F === 'any' }
 }
 
 // ================================================================================================
@@ -252,6 +273,13 @@ function migrateUseTable(callPath: Path, ctx: Ctx, imported: Map<string, string>
     else if (name && UNSUPPORTED_PLUGINS[name]) ctx.note('todo', UNSUPPORTED_PLUGINS[name], plugin, stmtPath)
     else if (plugin.type === 'ArrowFunctionExpression' || plugin.type === 'FunctionExpression') {
       columnsWrap = visibleColumnsHook(plugin, ctx, stmtPath) ?? columnsWrap
+      // v7's hook types no longer type this function; `any` keeps noImplicitAny code compiling
+      if (ctx.ts && columnsWrap && isFunction(columnsWrap)) {
+        const p0 = columnsWrap.params[0]
+        if (p0?.type === 'Identifier' && !p0.typeAnnotation) p0.typeAnnotation = b.tsTypeAnnotation(b.tsAnyKeyword())
+        // typed as ColumnDef<features, any>[] once the features variable exists (see fixImports)
+        if (!columnsWrap.returnType) ctx.columnArrayFns.push(columnsWrap)
+      }
     } else ctx.note('todo', `plugin \`${printNode(plugin)}\` is not migrated`, plugin, stmtPath)
   }
 
@@ -1009,8 +1037,10 @@ function followCollection(path: Path, kind: Kind, ctx: Ctx) {
 // Features and imports
 // ================================================================================================
 
-function buildFeatures(tables: Table[], ctx: Ctx, program: Node, fresh: (b: string, t?: Set<string>) => string) {
-  if (!tables.length) return
+/** Returns the module-level features variable when the file has exactly one. */
+function buildFeatures(tables: Table[], ctx: Ctx, program: Node, fresh: (b: string, t?: Set<string>) => string): string | null {
+  if (!tables.length) return null
+  const moduleVars = new Set<string>()
   const generated = new Map<string, string>()
   const lastImport = () => {
     let i = 0
@@ -1065,7 +1095,7 @@ function buildFeatures(tables: Table[], ctx: Ctx, program: Node, fresh: (b: stri
         const name = generated.get(`dc:${dc.join()}`) ?? fresh('v7DefaultColumn')
         if (!generated.has(`dc:${dc.join()}`)) {
           generated.set(`dc:${dc.join()}`, name)
-          program.body.splice(lastImport(), 0, ...stmts(`// react-table v7's defaults on every column: the 'text' filter (includesString) and its case-sensitive alphanumeric sort\nconst ${name} = { ${dc.join(', ')} }`))
+          program.body.splice(lastImport(), 0, ...stmts(`// react-table v7's defaults on every column: the 'text' filter (includesString) and its case-sensitive alphanumeric sort\nconst ${name} = { ${dc.join(', ')} }${ctx.ts ? ' as const' : ''}`))
         }
         const existing = opts.properties.find((p: Node) => keyName(p) === 'defaultColumn')
         if (existing) {
@@ -1132,47 +1162,82 @@ function buildFeatures(tables: Table[], ctx: Ctx, program: Node, fresh: (b: stri
       program.body.splice(lastImport(), 0, ...stmts(`const ${varName} = ${body}`))
     }
     if (opts) opts.properties.unshift(b.objectProperty.from({ key: b.identifier('features'), value: b.identifier(varName), shorthand: varName === 'features' }))
+    moduleVars.add(t.fnsInComponent ? '' : varName)
   }
+  return moduleVars.size === 1 && !moduleVars.has('') ? [...moduleVars][0] : null
 }
 
-const V9_TYPES: Record<string, string> = {
-  Column: 'ColumnDef',
-  ColumnInstance: 'Column',
-  TableInstance: 'Table',
-  TableOptions: 'TableOptions',
-  TableState: 'TableState',
-  Row: 'Row',
-  Cell: 'Cell',
-  HeaderGroup: 'HeaderGroup',
-  CellProps: 'CellContext',
-  HeaderProps: 'HeaderContext',
-  FilterProps: 'HeaderContext',
-  SortingRule: 'ColumnSort',
-  Filters: 'ColumnFiltersState',
-  IdType: 'string',
+/** v7 type → v9 type and its type arguments (`F` is the features type, `a` the v7 arguments). */
+const V9_TYPES: Record<string, { to: string; args: (F: string, a: string[]) => string[] }> = {
+  Column: { to: 'ColumnDef', args: (F, [d = 'any', v]) => (v ? [F, d, v] : [F, d]) },
+  ColumnInstance: { to: 'Column', args: (F, [d = 'any', v]) => (v ? [F, d, v] : [F, d]) },
+  TableInstance: { to: 'Table', args: (F, [d = 'any']) => [F, d] },
+  TableOptions: { to: 'TableOptions', args: (F, [d = 'any']) => [F, d] },
+  TableState: { to: 'TableState', args: (F) => [F] },
+  Row: { to: 'Row', args: (F, [d = 'any']) => [F, d] },
+  Cell: { to: 'Cell', args: (F, [d = 'any', v]) => (v ? [F, d, v] : [F, d]) },
+  HeaderGroup: { to: 'HeaderGroup', args: (F, [d = 'any']) => [F, d] },
+  CellProps: { to: 'CellContext', args: (F, [d = 'any', v]) => (v ? [F, d, v] : [F, d]) },
+  HeaderProps: { to: 'HeaderContext', args: (F, [d = 'any']) => [F, d] },
+  FilterProps: { to: 'HeaderContext', args: (F, [d = 'any']) => [F, d] },
+  SortingRule: { to: 'ColumnSort', args: () => [] },
+  Filters: { to: 'ColumnFiltersState', args: () => [] },
+  IdType: { to: 'string', args: () => [] },
 }
 
-function fixImports(program: Node, rtImports: Node[], imported: Map<string, string>, typeOnly: Set<string>, ctx: Ctx, ts: boolean) {
+/** Rewrites imports and v7 type references; returns true when a type took the features type `F`. */
+function fixImports(program: Node, rtImports: Node[], imported: Map<string, string>, typeOnly: Set<string>, ctx: Ctx, ts: boolean, F: string, names: Set<string>): boolean {
+  let usedF = false
+  const specOf = (local: string) => rtImports.flatMap((d) => d.specifiers).find((sp: Node) => sp.local.name === local) ?? rtImports[0]
   const v9Values = new Set(ctx.v9Imports)
-  const v9Types = new Map<string, string>()
+  const typeLocals = new Map<string, string>() // local → v7 type name
   for (const [local, name] of imported) {
     if (name === 'useTable' || PLUGINS[name] || UNSUPPORTED_PLUGINS[name]) continue
     if (name === 'useAsyncDebounce') ctx.compatImports.add(local === name ? name : `${name} as ${local}`)
     else if (name === 'flexRender' || name === 'makeRenderer') v9Values.add(local === 'flexRender' ? 'flexRender' : `flexRender as ${local}`)
-    else if (typeOnly.has(local) || (ts && V9_TYPES[name])) {
-      const to = V9_TYPES[name]
-      if (to && to !== 'string') v9Types.set(local, to)
-      else if (to === 'string') program.body.splice(program.body.indexOf(rtImports[0]), 0, ...stmts(`type ${local} = string`))
-      else ctx.note('todo', `type \`${name}\` has no v9 equivalent`, null)
-      ctx.note('info', `type ${name} → ${to ?? '?'}: v9 types take the features type first (e.g. ColumnDef<typeof features, TData>)`, null)
-    } else ctx.note('todo', `\`${name}\` from react-table has no v9 equivalent`, null)
+    else if (V9_TYPES[name] && (ts || typeOnly.has(local))) typeLocals.set(local, name)
+    else if (typeOnly.has(local) || ts) ctx.note('todo', `type \`${name}\` has no v9 equivalent; v9 types come from the features you register (e.g. Row<typeof features, TData>)`, specOf(local))
+    else ctx.note('todo', `\`${name}\` from react-table has no v9 equivalent`, specOf(local))
   }
+
+  // Type references: `Column<User>` → `ColumnDef<typeof features, User>`
+  const v9TypeImports = new Map<string, string>() // v9 name → local name used
+  const localFor = (to: string) => {
+    if (!v9TypeImports.has(to)) {
+      const clash = names.has(to) && ![...typeLocals.keys()].includes(to)
+      v9TypeImports.set(to, clash ? `V9${to}` : to)
+    }
+    return v9TypeImports.get(to)!
+  }
+  for (const fn of ctx.columnArrayFns) {
+    fn.returnType = expr(`(): ${localFor('ColumnDef')}<${F}, any>[] => []`).returnType
+  }
+  if (typeLocals.size) {
+    walk(program, (p) => {
+      const n = p.node
+      if (n.type !== 'TSTypeReference' || n.typeName.type !== 'Identifier' || !typeLocals.has(n.typeName.name)) return
+      const v7 = typeLocals.get(n.typeName.name)!
+      const map = V9_TYPES[v7]
+      if (map.to === 'string') return replace(p, b.tsStringKeyword())
+      const args = (n.typeParameters?.params ?? []).map((t: Node) => printNode(t))
+      const typeArgs = map.args(F, args)
+      if (typeArgs.includes(F)) usedF = true
+      const next = typeArgs.length ? `${localFor(map.to)}<${typeArgs.join(', ')}>` : localFor(map.to)
+      const parsed = expr(`null as unknown as ${next}`)
+      replace(p, parsed.typeAnnotation)
+      return false
+    }, { types: true })
+    for (const [local, v7] of typeLocals) {
+      if (V9_TYPES[v7].to !== 'string') ctx.note('info', `type ${v7} → ${V9_TYPES[v7].to}<${V9_TYPES[v7].args(F, ['TData']).join(', ')}>`, specOf(local))
+    }
+  }
+
   const specs: Node[] = []
   for (const name of [...v9Values].sort()) {
     const [imp, local] = name.split(' as ')
     specs.push(b.importSpecifier(b.identifier(imp), b.identifier(local ?? imp)))
   }
-  for (const [local, to] of v9Types) {
+  for (const [to, local] of v9TypeImports) {
     const s: Node = b.importSpecifier(b.identifier(to), b.identifier(local))
     s.importKind = 'type'
     specs.push(s)
@@ -1188,6 +1253,8 @@ function fixImports(program: Node, rtImports: Node[], imported: Map<string, stri
   }
   for (const d of rtImports) program.body.splice(program.body.indexOf(d), 1)
   program.body.splice(Math.min(index, program.body.length), 0, ...decls)
-  void replace
-  void isFunction
+  if (usedF && F === 'any') {
+    ctx.note('todo', "v9 column types need your table's features type: ColumnDef<typeof features, TData>. This file has no table of its own, so it uses `any`; run the codemod on the table's file in the same run to have it linked, or import the table's features type by hand", rtImports[0])
+  }
+  return usedF
 }
