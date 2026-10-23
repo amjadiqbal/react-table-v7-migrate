@@ -65,7 +65,7 @@ describe('cli', () => {
     // a second run finds nothing left to change
     const again = capture()
     await main(['--dry', join(dir, 'src')], again.io)
-    expect(again.out.join('\n')).not.toMatch(/would change/)
+    expect(again.out.join('\n')).toMatch(/0 files would change/)
   })
 
   it('--json prints a machine-readable report', async () => {
