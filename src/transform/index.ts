@@ -883,6 +883,7 @@ function migrateRenderer(fn: Node, role: Role, ctx: Ctx, at: Path) {
     ? b.objectProperty.from({ key: b.identifier('getValue'), value: b.identifier('getValue'), shorthand: true })
     : b.objectProperty(b.identifier('getValue'), b.identifier(getValue)))
   void needTable
+  // mutating the original pattern lets recast keep its layout where it can
   pattern.properties = keep
   if (prelude.length) {
     if (fn.body.type !== 'BlockStatement') fn.body = b.blockStatement([...prelude, b.returnStatement(fn.body)])

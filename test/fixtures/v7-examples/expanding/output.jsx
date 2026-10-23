@@ -103,16 +103,12 @@ function App() {
               onClick={row.getToggleExpandedHandler()}
               title='Toggle Row Expanded'
               style={{
-                ...{
-                  cursor: 'pointer'
-                },
+                cursor: 'pointer',
 
-                ...{
-                  // We can even use the row.depth property
-                  // and paddingLeft to indicate the depth
-                  // of the row
-                  paddingLeft: `${row.depth * 2}rem`,
-                }
+                // We can even use the row.depth property
+                // and paddingLeft to indicate the depth
+                // of the row
+                paddingLeft: `${row.depth * 2}rem`
               }}>
               {row.getIsExpanded() ? '👇' : '👉'}
             </span>

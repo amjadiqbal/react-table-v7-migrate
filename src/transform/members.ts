@@ -205,7 +205,12 @@ function mergeArgs(obj: Node, args: Node[], ctx: Ctx, at: Path) {
         const existing = obj.properties.findIndex((q: Node) => keyName(q) === k)
         if (k === 'style' && existing !== -1 && p.type === 'ObjectProperty') {
           const base = obj.properties[existing].value
-          const merged = expr('({ ...$a, ...$b })', { a: base, b: p.value })
+          const merged = base.type === 'ObjectExpression' && p.value.type === 'ObjectExpression'
+            ? b.objectExpression([
+              ...base.properties.filter((q: Node) => !p.value.properties.some((r: Node) => keyName(r) != null && keyName(r) === keyName(q))),
+              ...p.value.properties,
+            ])
+            : expr('({ ...$a, ...$b })', { a: base, b: p.value })
           obj.properties[existing].value = merged
           continue
         }
