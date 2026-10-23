@@ -1,0 +1,1 @@
+todo 3: this file augments react-table's types (`declare module 'react-table'`); delete it once the app is on v9 (v9 types come from the features you register)

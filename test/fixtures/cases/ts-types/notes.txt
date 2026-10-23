@@ -1,0 +1,6 @@
+info 2: type Column → ColumnDef<typeof features, TData, any>
+info 2: type Row → Row<typeof features, TData>
+info 2: type CellProps → CellContext<typeof features, TData>
+info 2: type TableInstance → Table<typeof features, TData>
+info 2: type HeaderGroup → HeaderGroup<typeof features, TData>
+info 45: `row` is passed on as a v9 row; code that receives it must use the v9 API

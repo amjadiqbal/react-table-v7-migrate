@@ -46,6 +46,8 @@ export class Ctx {
   userSortTypes = new Set<string>()
   commented = new WeakSet<Node>()
   source = ''
+  /** Names of functions declared at the top level of the file. */
+  functionNames = new Set<string>()
   /** TS: `hooks.visibleColumns` functions to type as ColumnDef<features, any>[] at the end. */
   columnArrayFns: Node[] = []
 

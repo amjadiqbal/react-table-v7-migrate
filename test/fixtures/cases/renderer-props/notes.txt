@@ -1,0 +1,2 @@
+info 15: `ExternalCell` is not defined in this file; it now receives the v9 cell context { getValue, row, column, cell, table }
+info 20: custom useTable options (updateMyData) moved to `meta`; read them as table.options.meta

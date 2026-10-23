@@ -1,0 +1,2 @@
+info 15: `className` is not a v7 column API, so it is read as a custom column key: header.column.columnDef.meta?.className (the codemod moves custom column keys into meta)
+todo 30: a prop-getter function argument ((props, meta) => ...) is not migrated; merge those props by hand

@@ -10,6 +10,7 @@ import {
   memberName,
   parseFile,
   printFile,
+  quoteStyle,
   printNode,
   replace,
   setTsMode,
@@ -142,6 +143,10 @@ export function transformSource(source: string, options: TransformOptions = {}):
   }
   const localOf = (name: string) => [...imported].find(([, v]) => v === name)?.[0]
   const names = usedNames(ast)
+  for (const st of program.body) {
+    if (st.type === 'FunctionDeclaration' && st.id) ctx.functionNames.add(st.id.name)
+    if (st.type === 'VariableDeclaration') for (const d of st.declarations) if (d.id.type === 'Identifier' && isFunction(d.init)) ctx.functionNames.add(d.id.name)
+  }
   const fresh = (base: string, taken: Set<string> = names) => {
     let n = base
     for (let i = 2; taken.has(n); i++) n = `${base}${i}`
@@ -193,7 +198,8 @@ export function transformSource(source: string, options: TransformOptions = {}):
       }
       continue
     }
-    for (const path of findRefs(binding.scope, binding.name)) work.push({ path, binding })
+    // generated code (no source position) is already v9
+    for (const path of findRefs(binding.scope, binding.name)) if (path.node.start != null) work.push({ path, binding })
   }
   work.sort((x, y) => (y.path.node.start ?? 0) - (x.path.node.start ?? 0))
   const tableOf = (binding: Binding) => binding.table
@@ -219,7 +225,7 @@ export function transformSource(source: string, options: TransformOptions = {}):
   }
   const typedWithAny = fixImports(program, rtImports, imported, typeOnly, ctx, ts, F, names)
 
-  const code = printFile(ast)
+  const code = printFile(ast, quoteStyle(source))
   const features = new Set<string>()
   for (const t of tables) for (const n of [...t.needs, ...ctx.shared]) if (n.kind === 'feature') features.add(n.name)
   ctx.notes.sort((a, b2) => a.line - b2.line)
@@ -303,6 +309,11 @@ function migrateUseTable(callPath: Path, ctx: Ctx, imported: Map<string, string>
     table.options = call.arguments[0]
   }
   call.arguments = [call.arguments[0]]
+  // v7's useTable<D> becomes useTable<TFeatures, TData>; inference from features + columns does it
+  if (call.typeParameters || call.typeArguments) {
+    call.typeParameters = null
+    call.typeArguments = null
+  }
 
   // Destructuring → table + consts
   const after: Node[] = []
@@ -1169,7 +1180,8 @@ function buildFeatures(tables: Table[], ctx: Ctx, program: Node, fresh: (b: stri
 
 /** v7 type → v9 type and its type arguments (`F` is the features type, `a` the v7 arguments). */
 const V9_TYPES: Record<string, { to: string; args: (F: string, a: string[]) => string[] }> = {
-  Column: { to: 'ColumnDef', args: (F, [d = 'any', v]) => (v ? [F, d, v] : [F, d]) },
+  // TValue `any`, as TanStack suggests for column arrays: typed Cell renderers stay assignable
+  Column: { to: 'ColumnDef', args: (F, [d = 'any', v = 'any']) => [F, d, v] },
   ColumnInstance: { to: 'Column', args: (F, [d = 'any', v]) => (v ? [F, d, v] : [F, d]) },
   TableInstance: { to: 'Table', args: (F, [d = 'any']) => [F, d] },
   TableOptions: { to: 'TableOptions', args: (F, [d = 'any']) => [F, d] },

@@ -54,10 +54,10 @@ export function rewriteUse(objPath: Path, kind: Kind, ctx: Ctx, env: Env) {
       entry = COLUMN[prop]
       target = `${X}.column`
     }
-    if (!entry && ctx.metaKeys.has(prop)) return replace(memberPath, expr(`${X}.column.columnDef.meta?.${prop}`))
+    if (!entry && !V9_HEADER_KEEP.has(prop)) return metaRead(memberPath, `${X}.column`, prop, ctx)
   } else if (kind === 'column') {
     entry = COLUMN[prop]
-    if (!entry && ctx.metaKeys.has(prop)) return replace(memberPath, expr(`${X}.columnDef.meta?.${prop}`))
+    if (!entry && !V9_COLUMN_KEEP.has(prop)) return metaRead(memberPath, X, prop, ctx)
   } else if (kind === 'row') entry = ROW[prop]
   else if (kind === 'cell') entry = CELL[prop]
   else if (kind === 'headerGroup') entry = HEADER_GROUP[prop]
@@ -75,6 +75,16 @@ export function rewriteUse(objPath: Path, kind: Kind, ctx: Ctx, env: Env) {
     return replace(callPath, expr(entry.call(target, names), subs))
   }
   if (entry.read) return replace(memberPath, expr(entry.read(target)))
+}
+
+// v9 Header/Column members that v7 code may already read with the same meaning
+const V9_HEADER_KEEP = new Set(['id', 'colSpan', 'rowSpan', 'depth', 'index', 'column', 'subHeaders', 'getContext', 'getSize', 'getStart', 'isPlaceholder', 'headerGroup'])
+const V9_COLUMN_KEEP = new Set(['id', 'depth', 'parent', 'columns', 'columnDef', 'accessorFn', 'getSize', 'getIndex', 'getContext'])
+
+/** `column.align` (a custom column-definition key in v7) → `column.columnDef.meta?.align`. */
+function metaRead(memberPath: Path, column: string, prop: string, ctx: Ctx) {
+  if (!ctx.metaKeys.has(prop)) ctx.note('info', `\`${prop}\` is not a v7 column API, so it is read as a custom column key: ${column}.columnDef.meta?.${prop} (the codemod moves custom column keys into meta)`, memberPath.node)
+  replace(memberPath, expr(`${column}.columnDef.meta?.${prop}`))
 }
 
 function stateRead(memberPath: Path, prop: string, T: string, ctx: Ctx) {
@@ -217,7 +227,7 @@ function mergeArgs(obj: Node, args: Node[], ctx: Ctx, at: Path) {
         if (existing !== -1) obj.properties.splice(existing, 1)
         obj.properties.push(p)
       }
-    } else if (isFunctionNode(arg)) {
+    } else if (isFunctionNode(arg) || (arg.type === 'Identifier' && ctx.functionNames.has(arg.name))) {
       ctx.note('todo', 'a prop-getter function argument ((props, meta) => ...) is not migrated; merge those props by hand', arg, at)
     } else {
       obj.properties.push(b.spreadElement(arg))
@@ -259,7 +269,15 @@ function spliceAttrs(spreadPath: Path, attrs: Node[]) {
     const n = nameOf(a)
     if (!n) continue
     for (let j = i - 1; j >= 0; j--) {
-      if (nameOf(list[j]) === n) list.splice(j, 1)
+      if (nameOf(list[j]) !== n) continue
+      // v7 merged className and style only when the getter set them; otherwise the earlier attribute stayed
+      const before = list[j].value
+      const beforeExpr = before?.type === 'JSXExpressionContainer' ? before.expression : before
+      const now = a.value?.type === 'JSXExpressionContainer' ? a.value.expression : a.value
+      if (beforeExpr && now && (n === 'className' || n === 'style')) {
+        a.value = b.jsxExpressionContainer(n === 'className' ? expr('$a || $b', { a: now, b: beforeExpr }) : expr('({ ...$b, ...$a })', { a: now, b: beforeExpr }))
+      }
+      list.splice(j, 1)
     }
   }
   list.splice(list.indexOf(spreadPath.node), 1, ...kept)

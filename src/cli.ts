@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 import { dirname, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { glob } from 'tinyglobby'
@@ -24,8 +25,11 @@ interface FileReport extends Omit<TransformResult, 'code'> {
   error?: string
 }
 
-async function main() {
+export async function main(argv: string[] = process.argv.slice(2), io: { log: (s: string) => void; error: (s: string) => void } = console): Promise<number> {
+  const console = io
+  let exitCode = 0
   const { values, positionals } = parseArgs({
+    args: argv,
     allowPositionals: true,
     options: {
       dry: { type: 'boolean', default: false },
@@ -36,7 +40,7 @@ async function main() {
   })
   if (values.help || !positionals.length) {
     console.log(HELP)
-    process.exit(values.help ? 0 : 1)
+    return values.help ? 0 : 1
   }
   const dry = values.dry || values.print
   const patterns = positionals.map((p) => (/[*?{[]/.test(p) || /\.[cm]?[jt]sx?$/.test(p) ? p : `${p.replace(/\/$/, '')}/**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}`))
@@ -84,12 +88,12 @@ async function main() {
   reports.sort((a, b) => a.file.localeCompare(b.file))
   if (values.json) {
     console.log(JSON.stringify({ dry, files: reports }, null, 2))
-    return
+    return reports.some((r) => r.error) ? 1 : 0
   }
   const out = values.print ? console.error : console.log
   if (!reports.length) {
     out('No react-table v7 code found.')
-    return
+    return 0
   }
   for (const r of reports) {
     const status = r.error ? 'error' : r.changed ? (dry ? 'would change' : 'changed') : 'unchanged'
@@ -103,7 +107,8 @@ async function main() {
   const errors = reports.filter((r) => r.error).length
   out(`\n${changed} file${changed === 1 ? '' : 's'} ${dry ? 'would change' : 'changed'}, ${todos} TODO${todos === 1 ? '' : 's'} to review${errors ? `, ${errors} could not be processed` : ''}.`)
   if (!dry && changed) out('Next: npm uninstall react-table @types/react-table && npm install @tanstack/react-table@^9 (and this package, if the code imports its /compat helpers).')
-  if (errors) process.exitCode = 1
+  if (errors) exitCode = 1
+  return exitCode
 }
 
 const EXTS = ['', '.ts', '.tsx', '.js', '.jsx', '.mts', '.mjs', '/index.ts', '/index.tsx', '/index.js', '/index.jsx']
@@ -181,8 +186,14 @@ function relativeSpecifier(from: string, to: string) {
   return rel.startsWith('.') ? rel : `./${rel}`
 }
 
-main().catch((err) => {
-  console.error(err)
-  process.exit(1)
-})
+const invoked = process.argv[1] ? realpathSync(process.argv[1]) : ''
+if (invoked && import.meta.url === pathToFileURL(invoked).href) {
+  main().then(
+    (code) => process.exit(code),
+    (err) => {
+      console.error(err)
+      process.exit(1)
+    },
+  )
+}
 

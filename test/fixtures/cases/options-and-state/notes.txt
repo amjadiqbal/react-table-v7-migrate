@@ -1,0 +1,2 @@
+info 25: `autoResetSortBy` was dropped: v9 never resets this state when data changes (v7 did by default)
+info 26: `autoResetSelectedRows` was dropped: v9 never resets this state when data changes (v7 did by default)

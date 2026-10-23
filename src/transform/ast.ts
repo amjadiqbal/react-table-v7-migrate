@@ -30,8 +30,15 @@ export function parseFile(source: string, filename: string): Node {
   })
 }
 
-export function printFile(ast: Node): string {
-  return recast.print(ast, { quote: 'single', reuseWhitespace: true }).code
+export function printFile(ast: Node, quote: 'single' | 'double' = 'single'): string {
+  return recast.print(ast, { quote, reuseWhitespace: true }).code
+}
+
+/** The quote style most string literals in the source use, for generated code to match. */
+export function quoteStyle(source: string): 'single' | 'double' {
+  const single = (source.match(/(?:from|import|require\(|=|:|\(|,)\s*'[^'\n]*'/g) ?? []).length
+  const double = (source.match(/(?:from|import|require\(|=|:|\(|,)\s*"[^"\n]*"/g) ?? []).length
+  return double > single ? 'double' : 'single'
 }
 
 export function printNode(node: Node): string {

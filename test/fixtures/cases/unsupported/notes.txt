@@ -1,0 +1,12 @@
+todo 1: `makePropGetter` from react-table has no v9 equivalent
+todo 8: stateReducer has no v9 equivalent: use controlled state (`state` + `on<Slice>Change`) or the `atoms` option
+todo 9: useControlledState has no v9 equivalent: pass controlled slices with `state` + `on<Slice>Change`
+todo 11: useGroupBy (grouping/aggregation) is not migrated: add columnGroupingFeature, rowAggregationFeature and groupedRowModel by hand (see the v9 grouping guide)
+todo 12: useBlockLayout only set CSS widths; v9 has no layout plugins. Set widths from header.getSize() / cell.column.getSize() yourself
+todo 13: useResizeColumns is not migrated: add columnSizingFeature + columnResizingFeature and use header.getResizeHandler() (see the v9 column-resizing guide)
+todo 16: plugin hook code `hooks.useInstance.push((instance) => instance)` is not migrated (only hooks.visibleColumns.push is)
+todo 25: `header.getGroupByToggleProps`: grouping (useGroupBy) is not migrated
+todo 25: `header.canGroupBy`: grouping (useGroupBy) is not migrated
+todo 27: `header.getResizerProps`: column resizing (useResizeColumns) is not migrated: use header.getResizeHandler()
+todo 38: `cell.isAggregated`: grouping (useGroupBy) is not migrated
+todo 38: `cell.isGrouped`: grouping (useGroupBy) is not migrated
