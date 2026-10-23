@@ -1,4 +1,5 @@
 import {
+  addComment,
   builders as b,
   declScope,
   expr,
@@ -1109,7 +1110,13 @@ function buildFeatures(tables: Table[], ctx: Ctx, program: Node, fresh: (b: stri
         const name = generated.get(`dc:${dc.join()}`) ?? fresh('v7DefaultColumn')
         if (!generated.has(`dc:${dc.join()}`)) {
           generated.set(`dc:${dc.join()}`, name)
-          program.body.splice(lastImport(), 0, ...stmts(`// react-table v7's defaults on every column: the 'text' filter (includesString) and its case-sensitive alphanumeric sort\nconst ${name} = { ${dc.join(', ')} }${ctx.ts ? ' as const' : ''}`))
+          const what = [
+            dc.some((d) => d.startsWith('filterFn')) ? "its built-in 'text' filter" : '',
+            dc.some((d) => d.startsWith('sortFn')) ? 'its case-sensitive alphanumeric sort' : '',
+          ].filter(Boolean).join(' and ')
+          const decl = stmts(`const ${name} = { ${dc.join(', ')} }${ctx.ts ? ' as const' : ''}`)
+          addComment(decl[0], `react-table v7's defaults on every column: ${what}`)
+          program.body.splice(lastImport(), 0, ...decl)
         }
         const existing = opts.properties.find((p: Node) => keyName(p) === 'defaultColumn')
         if (existing) {

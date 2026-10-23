@@ -22,6 +22,7 @@ const features = tableFeatures({
   }
 });
 
+// react-table v7's defaults on every column: its case-sensitive alphanumeric sort
 const v7DefaultColumn = {
   sortFn: 'alphanumericCaseSensitive'
 };

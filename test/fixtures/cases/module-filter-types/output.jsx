@@ -9,6 +9,7 @@ import {
 
 import { fromV7FilterTypes } from '@amjadiqbal/react-table-v7-migrate/compat';
 
+// react-table v7's defaults on every column: its built-in 'text' filter
 const v7DefaultColumn = {
   filterFn: 'includesString'
 };

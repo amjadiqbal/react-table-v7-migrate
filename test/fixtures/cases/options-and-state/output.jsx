@@ -38,6 +38,7 @@ const features = tableFeatures({
   }
 });
 
+// react-table v7's defaults on every column: its built-in 'text' filter and its case-sensitive alphanumeric sort
 const v7DefaultColumn = {
   filterFn: 'includesString',
   sortFn: 'alphanumericCaseSensitive'

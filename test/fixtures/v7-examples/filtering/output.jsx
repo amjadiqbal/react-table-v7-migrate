@@ -21,6 +21,7 @@ import { matchSorter } from 'match-sorter'
 
 import makeData from '../makeData.js'
 
+// react-table v7's defaults on every column: its built-in 'text' filter
 const v7DefaultColumn = {
   filterFn: 'includesString'
 };

@@ -1,6 +1,6 @@
 {
   "name": "@amjadiqbal/react-table-v7-migrate",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Codemod and compat helpers to migrate react-table v7 apps to TanStack Table v9 (and React 19): useTable, useSortBy, useFilters, useGlobalFilter, usePagination, useRowSelect, useExpanded.",
   "license": "MIT",
   "author": "Amjad Iqbal (https://amjad.com.pk)",
