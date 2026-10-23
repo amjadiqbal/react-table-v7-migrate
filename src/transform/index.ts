@@ -9,6 +9,7 @@ import {
   keyName,
   memberName,
   parseFile,
+  patternNames,
   printFile,
   quoteStyle,
   printNode,
@@ -405,7 +406,9 @@ function migrateOptions(opts: Node, table: Table, ctx: Ctx, at: Path) {
       ctx.note('info', `\`${k}\` was dropped: v9 never resets this state when data changes (v7 did by default)`, p)
     } else if (k === 'filterTypes' || k === 'sortTypes') {
       table.userTypes.push(p)
-      table.fnsInComponent = true
+      // a module-level filterTypes/sortTypes constant lets features stay module-level (and typeable)
+      const moduleLevel = p.value.type === 'Identifier' && declScope(at, p.value.name)?.type === 'Program'
+      if (!moduleLevel) table.fnsInComponent = true
       const keys = p.value.type === 'ObjectExpression' ? p.value.properties.map(keyName) : resolveObjectKeys(p.value, at)
       for (const key of keys ?? []) if (key) (k === 'filterTypes' ? ctx.userFilterTypes : ctx.userSortTypes).add(key)
     } else if (k === 'globalFilter') {
@@ -1170,7 +1173,14 @@ function buildFeatures(tables: Table[], ctx: Ctx, program: Node, fresh: (b: stri
     else {
       varName = fresh('features')
       generated.set(body, varName)
-      program.body.splice(lastImport(), 0, ...stmts(`const ${varName} = ${body}`))
+      // after the imports, and after any top-level declaration it uses (filterTypes), to avoid the TDZ
+      let at = lastImport()
+      const uses = Object.values(subs).filter((n) => n.type === 'Identifier').map((n) => n.name)
+      program.body.forEach((st: Node, i: number) => {
+        const declared = st.type === 'VariableDeclaration' ? st.declarations.flatMap((d: Node) => patternNames(d.id)) : st.type === 'FunctionDeclaration' ? [st.id?.name] : []
+        if (declared.some((n: string) => uses.includes(n))) at = Math.max(at, i + 1)
+      })
+      program.body.splice(at, 0, ...stmts(`const ${varName} = ${body}`, subs))
     }
     if (opts) opts.properties.unshift(b.objectProperty.from({ key: b.identifier('features'), value: b.identifier(varName), shorthand: varName === 'features' }))
     moduleVars.add(t.fnsInComponent ? '' : varName)
