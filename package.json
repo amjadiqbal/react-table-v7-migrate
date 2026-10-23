@@ -1,0 +1,99 @@
+{
+  "name": "@amjadiqbal/react-table-v7-migrate",
+  "version": "0.0.0",
+  "description": "Codemod and compat helpers to migrate react-table v7 apps to TanStack Table v9 (and React 19): useTable, useSortBy, useFilters, useGlobalFilter, usePagination, useRowSelect, useExpanded.",
+  "license": "MIT",
+  "author": "Amjad Iqbal (https://amjad.com.pk)",
+  "homepage": "https://github.com/amjadiqbal/react-table-v7-migrate#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amjadiqbal/react-table-v7-migrate.git"
+  },
+  "bugs": "https://github.com/amjadiqbal/react-table-v7-migrate/issues",
+  "keywords": [
+    "react-table",
+    "react-table-v7",
+    "tanstack",
+    "tanstack-table",
+    "codemod",
+    "migration",
+    "upgrade",
+    "react-19",
+    "datagrid",
+    "table",
+    "recast",
+    "refactor"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "react-table-v7-migrate": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./compat": {
+      "types": "./dist/compat.d.ts",
+      "import": "./dist/compat.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "ci": "bash scripts/ci-local.sh"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.29.9",
+    "recast": "^0.23.21",
+    "tinyglobby": "^0.2.17"
+  },
+  "peerDependencies": {
+    "@tanstack/react-table": ">=9.0.0",
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "@tanstack/react-table": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tanstack/react-table": "^9.3.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/react-table": "^7.7.20",
+    "eslint": "^10.13.0",
+    "jsdom": "^30.1.3",
+    "match-sorter": "^8.3.0",
+    "publint": "^0.3.25",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-table": "^7.8.0",
+    "regenerator-runtime": "^0.14.1",
+    "tsdown": "^0.23.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.0",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

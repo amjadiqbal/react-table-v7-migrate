@@ -1,0 +1,1 @@
+info 251: column Filter components now receive the v9 header context ({ column, header, table }); they were moved to columnDef.meta.Filter
