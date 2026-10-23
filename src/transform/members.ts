@@ -113,8 +113,33 @@ function instanceRead(memberPath: Path, callPath: Path | null, prop: string, T: 
 function bareUse(objPath: Path, kind: Kind, ctx: Ctx, env: Env) {
   const parent = objPath.parent
   if (kind === 'state') {
+    const T = env.table ?? 'table'
+    // `const { pageIndex, pageSize } = state` → one declarator per key, read from the v9 state
+    if (parent?.type === 'VariableDeclarator' && parent.init === objPath.node && parent.id.type === 'ObjectPattern' && objPath.parentPath?.list) {
+      const declarators: Node[] = []
+      for (const prop of parent.id.properties) {
+        const k = keyName(prop)
+        if (!k || prop.type !== 'ObjectProperty') {
+          ctx.note('todo', 'a rest element in a state pattern is not migrated', prop, objPath)
+          continue
+        }
+        let target = prop.value
+        let fallback: Node | null = null
+        if (target.type === 'AssignmentPattern') {
+          fallback = target.right
+          target = target.left
+        }
+        ctx.need(STATE_NEEDS[k])
+        const read = STATE_READ[k] ? STATE_READ[k](T) : `${T}.state.${k}`
+        if (!STATE_READ[k]) ctx.note('todo', `state.${k} has no v9 mapping`, prop, objPath)
+        declarators.push(b.variableDeclarator(target, fallback ? expr(`(${read}) ?? $d`, { d: fallback }) : expr(read)))
+      }
+      const list = objPath.parentPath.list
+      list.splice(list.indexOf(parent), 1, ...declarators)
+      return
+    }
     ctx.note('info', 'v7 `state` is now the v9 table.state (sorting, columnFilters, pagination, rowSelection, ... instead of sortBy, filters, pageIndex, selectedRowIds)', objPath.node)
-    replace(objPath, expr(`${env.table ?? 'table'}.state`))
+    replace(objPath, expr(`${T}.state`))
     return
   }
   // Iterating or passing to prepareRow is fine; anything else gets a note.
